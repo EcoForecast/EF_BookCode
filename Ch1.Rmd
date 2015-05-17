@@ -1,0 +1,105 @@
+---
+title: "Chapter 1"
+author: "Mike Dietze"
+output: html_document
+---
+
+```{r}
+# human pop'n growth (M/yr) in '90-95 and '10-15
+# UN World Pop'n report 2014 Table 1
+g= c(84.2,81.7) 
+1000/mean(g) ## years per Billion
+
+## wikipedia popn table (from 2008 UN report)
+n = 4:7  ## pop'n in billions
+y = c(1974,1987,1999,2011) ## year hit
+plot(y,n)
+f = lm(n~y)
+abline(f)
+summary(f)
+1/coef(f)[2] ## years/billion
+
+us = 0.3189 # US pop, 2014
+us/coef(f)[2] ## year per US
+```
+
+
+## Model-data loop: multiple regression
+
+```{r}
+##pseudo data
+n = 15
+x1 = runif(n,0,10)
+x2 = rbeta(n,2,6)
+y  = rnorm(n,3+0.5*x1-4*x2,1)
+fit = lm(y~x1+x2)
+summary(fit)
+b = coef(fit)
+nx = 100
+xseq = seq(0,10,length=nx)
+plot(x1,y)
+lines(xseq,b[1]+b[2]*xseq+b[3]*mean(x2),col=2,lwd=3)
+plot(x2,y)
+lines(xseq,b[1]+b[2]*mean(x1)+b[3]*xseq,col=2,lwd=3)
+
+##quantify uncertainty
+par(mfrow=c(1,2))
+sigma = vcov(fit)
+s2 = sqrt(sigma[2,2])
+s3 = sqrt(sigma[3,3])
+b2seq = seq(b[2]-3*s2,b[2]+3*s2,length=1000)
+plot(b2seq,dnorm(b2seq,b[2],s2),type='l',lwd=4,xlab="Beta2",ylab="Density")
+b3seq = seq(b[3]-3*s3,b[3]+3*s3,length=1000)
+plot(b3seq,dnorm(b3seq,b[3],s3),type='l',lwd=4,xlab="Beta3",ylab="Density")
+
+## Propagating uncertainty
+library(mvtnorm)
+nmc = 10000
+pred = conf = matrix(numeric(0),nmc,nx)
+tau = summary(fit)$sigma
+x2bar = mean(x2)
+for(i in 1:nmc){
+  bmc = rmvnorm(1,b,sigma)
+  conf[i,] = bmc[1]+bmc[2]*xseq+bmc[3]*x2bar
+  pred[i,] = rnorm(nx,conf[i,],tau)
+}
+ci = apply(conf,2,quantile,c(0.025,0.5,0.975))
+pi = apply(pred,2,quantile,c(0.025,0.5,0.975))
+
+col.alpha <- function(col,alpha=1){
+  rgb = col2rgb(col)
+  rgb(rgb[1],rgb[2],rgb[3],alpha*255,maxColorValue=255)
+}
+ciEnvelope <- function(x,ylo,yhi,...){
+  polygon(cbind(c(x, rev(x), x[1]), c(ylo, rev(yhi),
+                                      ylo[1])), border = NA,...) 
+}
+
+par(mfrow=c(1,1))
+rng = range(c(range(pi),range(y)))
+plot(0,0,type='n',xlim=c(0,10),ylim=rng,xlab="X1",ylab="Y")
+ciEnvelope(xseq,pi[1,],pi[3,],col=col.alpha("grey",0.4))
+ciEnvelope(xseq,ci[1,],ci[3,],col=col.alpha("grey",0.7))
+lines(xseq,ci[2,],lwd=4)
+points(x1,y,pch="+")
+
+## Uncertainty Analysis
+ag = n/2
+bg = sum(resid(fit)^2)
+resid.var = bg^2/(ag-1)^2/(ag-2)^2 ## Inverse Gamma
+cv = c(abs(sqrt(diag(sigma))/b),sqrt(resid.var)/tau^2)
+elas = c(b*c(1,mean(x1),mean(x2))/mean(y),1)
+vd = c(c(1,mean(x1),mean(x2))^2*diag(sigma),tau^2)
+vd = vd/sum(vd)*100
+
+par(mfrow=c(1,3))
+lab = c("Int","Beta2","Beta3","Resid")
+barplot(cv,horiz=TRUE,main="Coef of Variation",names.arg=lab,cex.names=1.5,cex.main=1.5)
+barplot(elas,horiz=TRUE,main="Elasticity",names.arg=rep(" ",4),cex.main=1.5)
+abline(v=0)
+barplot(vd,horiz=TRUE,main="% Variance",names.arg=rep(" ",4),cex.main=1.5)
+
+
+
+```
+
