@@ -105,18 +105,19 @@ sens = c(1,0.4)
 sd = c(0.4,1)
 ymax = mu*max(sens)+2*max(sd)
 
-layout(matrix(c(1,2,3,
-                1,4,5,
-                6,7,7),3,3,byrow=TRUE),
-       widths=c(0.12,0.44,0.44),height=c(0.44,0.44,0.12))
+layout(matrix(c(7,7,6,
+                2,3,1,
+                4,5,1),3,3,byrow=TRUE),
+       widths=c(0.44,0.44,.12),height=c(.12,0.44,0.44))
 #layout.show(7)
 
 #par(mfrow=c(2,2))
 par(mar=c(0,0,0,0))
 plot.new() #(0,0,type='n',bty='n',ann=FALSE)
-text(0.75,0.25,"LOW",cex=2,srt=90)
-text(0.75,0.78,"HIGH",cex=2,srt=90)
-text(0.25,0.5,"SENSITIVITY",cex=3,srt=90)
+text(0.75,0.5,"SENSITIVITY",cex=3,srt=270)
+text(0.25,0.25,"LOW",cex=2,srt=270)
+text(0.25,0.78,"HIGH",cex=2,srt=270)
+
 par(bty='l')
 par(mar=c(2,2,1,1))
 for(i in 1:2){
@@ -137,9 +138,9 @@ for(i in 1:2){
 plot.new()
 par(mar=c(0,0,0,0))
 plot.new()
-text(0.25,0.75,"LOW",cex=2)
-text(0.8,0.78,"HIGH",cex=2)
-text(0.5,0.25,"PARAMETER UNCERTAINTY",cex=3)
+text(0.5,0.75,"PARAMETER UNCERTAINTY",cex=3)
+text(0.25,0.25,"LOW",cex=2)
+text(0.8,0.25,"HIGH",cex=2)
 
 ###############  TAYLOR SERIES: Michaelis-Menten ########################
 require(mvtnorm)
