@@ -1,0 +1,268 @@
+---
+title: "Chapter 10 - Fusion"
+author: "Mike Dietze"
+date: "June 12, 2015"
+output: html_document
+---
+
+
+Simple figure illustrating NPP, GPP, RE
+```{r}
+time = seq(0,100,length=1000)
+Temp  = sin((time-6)*pi/12)*8+20
+light = sin((time-6)*pi/12)*700
+light[light<0] = 0
+
+LUE = 0.02
+GPP = LUE*light
+RE  = 5*2^((Temp-25)/10)
+ylim=range(c(GPP,-RE))
+plot(time,GPP,type='l',ylim=ylim,xlab="Time (hours)",ylab="Carbon Flux (umol/m2/s)",lwd=4,lty=2)
+lines(time,-RE,lwd=4,lty=3)
+lines(time,GPP-RE,lwd=4)
+
+```
+
+```{r}
+### Meta-analysis stats
+library(MCMCpack)
+mu = 5  ## true mean
+sigma = 4 ## true standard deviation
+N = 10^(1:4)
+n = 10000
+par(mfrow=c(4,2))
+for(i in 1:4){
+  T = S = rep(NA,n)
+  for(j in 1:n){
+    x = rnorm(N[i],mu,sigma)
+    T[j] = mean(x)
+    S[j] = var(x)
+  }
+  hist(T,probability=TRUE)
+  xseq = seq(min(T),max(T),length=1000)
+  lines(xseq,dnorm(xseq,mu,sigma/sqrt(N[i])))
+  hist(S,probability=TRUE)
+  sseq = seq(min(S),max(S),length=1000)
+  lines(sseq,dinvgamma(sseq,N[i]/2,N[i]/2*sigma^2))  
+}
+
+### Fitting a regression with two data sources
+library(rjags)
+
+## define parameters
+n = c(7,25)
+beta = c(-2,4)
+xrng = c(0,3)
+sd = c(1,2.5)
+
+#simulate data
+x = list()
+y = list()
+for(i in 1:length(n)){
+  x[[i]] = sort(runif(n[i],xrng[1],xrng[2]))
+  y[[i]] = rnorm(n[i],beta[1]+beta[2]*x[[i]],sd[i])
+}
+ylim = range(sapply(y,range,na.rm=TRUE))
+
+## plot data by itself
+plot(0,0,type='n',xlim=xrng,ylim=ylim,xlab="X",ylab="Y")
+for(i in 1:length(n)){
+  points(x[[i]],y[[i]],col=i+2,pch=i+15,cex=1.5)
+}
+abline(beta,lwd=2,lty=3)  #TRUE model
+
+## BUGS univariate regression w/ 1 data source
+regression <- "
+model{
+  for(i in 1:2) { beta[i] ~ dnorm(0,0.001)}
+  sigma ~ dgamma(1,1)
+  for(i in 1:n){
+    mu[i] <- beta[1] + beta[2]*X[i]
+    Y[i] ~ dnorm(mu[i],sigma)
+    PY[i] ~ dnorm(mu[i],sigma)
+  }  
+}"
+
+## Run individual models
+pi <- list()
+for(i in 1:length(n)){
+ mod <- jags.model(file=textConnection(regression),data=list(X=x[[i]],Y=y[[i]],n=n[i])
+                  ,n.adapt=1000,n.chains=3,
+                  init=list(beta=beta,sigma=2/var(y[[i]])))
+ jdat <- coda.samples(mod,variable.names=c("beta"),n.iter=3000) ## burnin
+ #plot(jdat)
+ jdat <- coda.samples(mod,variable.names=c("mu"),n.iter=30000) ## samples
+
+ ## summarize output
+ pi[[i]] <- apply(as.matrix(jdat),2,quantile,c(0.025,0.5,0.975))
+}
+
+## BUGS univariate regression w/ 2 data sources
+regression2 <- "
+model{
+  for(i in 1:2) { beta[i] ~ dnorm(0,0.001)}
+  sigma1 ~ dgamma(1,1)
+  for(i in 1:n1){
+    mu1[i] <- beta[1] + beta[2]*X1[i]
+    Y1[i] ~ dnorm(mu1[i],sigma1)
+  }  
+  sigma2 ~ dgamma(1,1)
+  for(i in 1:n2){
+    mu2[i] <- beta[1] + beta[2]*X2[i]
+    Y2[i] ~ dnorm(mu2[i],sigma2)
+  } 
+}"
+mod <- jags.model(file=textConnection(regression2),data=list(X1=x[[1]],Y1=y[[1]],n1=n[1],
+                                                             X2=x[[2]],Y2=y[[2]],n2=n[2])
+                  ,n.adapt=1000,n.chains=3,
+                  init=list(beta=beta,sigma1=2/var(y[[1]]),sigma2=2/var(y[[2]])))
+jdat <- coda.samples(mod,variable.names=c("beta"),n.iter=3000) ## burnin
+plot(jdat)
+jdat <- coda.samples(mod,variable.names=c("mu1","mu2"),n.iter=30000) ## samples
+
+xC <- c(x[[1]],x[[2]])
+piC <- apply(as.matrix(jdat),2,quantile,c(0.025,0.5,0.975))
+ord = order(xC)
+
+ciEnvelope <- function(x,ylo,yhi,...){
+  polygon(cbind(c(x, rev(x), x[1]), c(ylo, rev(yhi),
+                                      ylo[1])), border = NA,...) 
+}
+
+plot(0,0,type='n',xlim=xrng,ylim=ylim,xlab="X",ylab="Y")
+for(i in 1:length(n)){
+  col=col2rgb(i+2)
+  ciEnvelope(x[[i]],pi[[i]][1,],pi[[i]][3,],col=rgb(col[1],col[2],col[3],0.3*256,maxColorValue=256))
+  lines(x[[i]],pi[[i]][2,],col=i+2,lwd=3)
+}
+for(i in 1:length(n)){
+  points(x[[i]],y[[i]],col=i+2,pch=i+15,cex=1.5)
+}
+abline(beta,lwd=2,lty=3)  #TRUE model
+
+## combined
+#plot(0,0,type='n',xlim=xrng,ylim=ylim,xlab="X",ylab="Y")
+  col=col2rgb(2)
+  ciEnvelope(xC[ord],piC[1,ord],piC[3,ord],col=rgb(col[1],col[2],col[3],0.3*256,maxColorValue=256))
+  lines(xC,piC[2,],col=2,lwd=3)
+
+for(i in 1:length(n)){
+  points(x[[i]],y[[i]],col=i+2,pch=i+15,cex=1.5)
+}
+abline(beta,lwd=2,lty=3)  #TRUE model
+
+
+##########################################################################
+### Autocorrelation plots
+
+## generate slow random walk
+n = 2^13
+Y = rep(0,n)
+for(i in 2:n){
+  Y[i] = Y[i-1]+rnorm(1,0,0.005)
+}
+X = 1:n
+plot(X,Y,type='l')
+acf(Y)
+ar(Y)
+
+## subsample
+pdf("Ch10_thin.pdf")
+for(i in 12:0){
+  sel = seq(1,n,by=2^i)
+  plot(X[sel],Y[sel],type='l',ylim=range(Y),xlab="X",ylab="Y",xlim=range(X))
+  text(0,max(Y)*0.85,paste("Thin =",2^i),cex=2,pos=4)
+  text(0,max(Y)*0.7,paste("rho =",format(max(0,ar(Y[sel],order.max=1,aic=FALSE)$ar))),cex=2,pos=4)
+}
+dev.off()
+
+
+## plot L vs rho
+n.rho = 30
+r = seq(0,1-1/n.rho,length=n.rho)
+L.ind = -sum(dnorm(Y,mean(Y),sd(Y),log=TRUE))
+L.ar =rep(NA,n.rho)
+D = as.matrix(dist(1:n, diag=TRUE,upper=TRUE))
+for(i in 1:n.rho){
+  print(i)
+  sigma = var(Y)*r[i]^D
+  L.ar[i] = -sum(dmvnorm(Y,rep(mean(Y),n),sigma,log=TRUE))
+}
+
+plot(r,L.ar,type='l',lwd=3)
+abline(h=L.ind,lty=2)
+
+## plot L vs thinning (AR and ind)
+library(mvtnorm)
+n = 8192
+n.rep = 500
+n.thin = 11
+thin = 2^(0:(n.thin-1))
+rho = n.set = Lt.ind = Lt.ar = matrix(NA,n.thin,n.rep)
+
+n.set = n/thin
+D = list()
+for(i in 1:n.thin){
+  D[[i]] =  as.matrix(dist(1:n.set[i], diag=TRUE,upper=TRUE))
+}
+
+for(j in 1:n.rep){
+  print(j)
+  
+  ## generate time series
+  Y = rep(0,n)
+  for(i in 2:n){
+    Y[i] = Y[i-1]+rnorm(1,0,0.01)
+  }
+
+  ## calculate for differnt thins
+  for(i in 1:n.thin){
+    Yset = Y[seq(1,length(Y),by=thin[i])]
+    rho[i,j] = max(0,ar(Yset,order.max=1,aic=FALSE)$ar)
+#    sigma = var(Yset)*rho[i,j]^D[[i]]
+#    Lt.ar[i,j] = -sum(dmvnorm(Yset,rep(mean(Yset),n.set[i]),sigma,log=TRUE))  
+#    Lt.ind[i,j] = -sum(dnorm(Yset,mean(Yset),sd(Yset),log=TRUE))   
+  }
+}
+
+plot(thin,Lt.ar[,1],ylim=range(c(range(Lt.ar),range(Lt.ind))),lwd=3,log="x",type='l')
+lines(thin,Lt.ind[,1],lty=2)
+
+plot(thin,-Lt.ar[,1]/max(abs(Lt.ar[,1])),ylim=c(0,1),lwd=3,log="xy",type='l')
+lines(thin,-Lt.ind[,1]/max(abs(Lt.ind[,1])),lty=2)
+
+n.eff = matrix(rep(n.set,n.rep),n.thin,n.rep)*(1-rho)/(1+rho)
+n.CI = apply(n.eff,1,quantile,c(0.025,0.5,0.975),na.rm=TRUE)
+plot(n.set,n.CI[2,],log="x",type='l',lwd=4,ylim=range(n.CI)
+     ,xlab="Number of Observations"
+     ,ylab="Effective Sample Size")
+lines(n.set,n.CI[1,],lty=2)
+lines(n.set,n.CI[3,],lty=2)
+lines(n.set,n.set,col=3)
+
+plot(n.set,n.eff[,1],log="x")
+
+plot(n.set,apply(n.eff,1,mean,na.rm=TRUE),log="x",type='l',lwd=4)
+
+plot(n.set,apply(rho,1,mean,na.rm=TRUE),log="x",type='l',lwd=4)
+
+
+rho.CI = apply(rho,1,quantile,c(0.025,0.5,0.975),na.rm=TRUE)
+plot(n.set,rho.CI[2,],log="x",type='l',lwd=4,ylim=range(rho.CI)
+     ,xlab="Number of Observations"
+     ,ylab="Autocorrelation")
+lines(n.set,rho.CI[1,],lty=2)
+lines(n.set,rho.CI[3,],lty=2)
+
+plot(n.set,1-rho.CI[2,],log="xy"
+     ,xlab="Number of Observations"
+     ,ylab="1-Autocorrelation",pch=16,cex=1.5)
+lines(n.set,1-rho.CI[1,],lty=2,lwd=2)
+lines(n.set,1-rho.CI[3,],lty=2,lwd=2)
+fit1 = lm(log10(1-rho.CI[2,])~log10(n.set))
+abline(fit1)
+summary(fit1)
+n.set*(1-rho.CI[2,])/(1+rho.CI[2,])
+```
+
+
