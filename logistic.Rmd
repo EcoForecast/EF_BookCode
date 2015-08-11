@@ -1,0 +1,874 @@
+Population Growth
+========================================================
+
+Deterministic Growth
+-------------------------
+Consider the simple discrete logistic growth model
+
+```{r, echo=1:5}
+r = 1
+K = 10
+n0 = .1
+NT = 30
+time = 1:NT
+
+#layout(matrix(c(1,2,3,3),2,2,byrow=TRUE))
+plot(c(0,K),c(r,0),pch=18,ylim=c(0,r*1.1),
+     xlim=c(0,K*1.1),bty='n',xaxt="n", yaxt="n",
+     ylab="Per Capita Growth Rate",
+     xlab="Population Size",cex.lab=1.5,cex=2,mgp=c(1,1,0)*1.7)
+axis(1, pos=0)
+axis(2, pos=0)
+abline(h=r,lty=3,lwd=2)
+abline(a=r,b=-r/K,lwd=3)
+text(0.45,0.85,"r",cex=2)
+text(10,0.15,"K",cex=2)
+
+plot0 <- function(...){
+  plot(...,bty='n',xaxt="n", yaxt="n",cex.lab=1.5,cex=2,mgp=c(1,1,0)*1.8)
+  axis(1, pos=0)
+  axis(2, pos=0)
+}
+x = seq(0,K,length=500)
+plot0(x,r*x*(1-x/K),lwd=3,type='l',
+      xlab="Population Size",
+      ylab="Growth Rate"
+      )
+points(c(0,K),c(0,0),pch=18,cex=2)
+abline(a=0,b=r,lty=3,lwd=2)
+```
+
+can then simulate as
+
+```{r}
+n = rep(n0,NT)
+ne = rep(n0,NT)
+for(t in 2:NT){
+  n[t] = n[t-1] + r*n[t-1]*(1-n[t-1]/K)
+    ne[t] = ne[t-1] + r*ne[t-1]
+}
+```
+
+
+You can also embed plots, for example:
+
+```{r fig.width=7, fig.height=6}
+plot0(time,n,ylim=c(0,12),lwd=3,type='l',
+      xlab="Time",ylab="Population Size")
+lines(time,ne,lty=3,lwd=3)
+text(1,1.3,expression(N[0]),cex=2)
+```
+
+Observation Error
+-------------------------
+
+One of the realities of science is that we rarely get to observe our system without there being some noise or uncertainty in the observations themselves.
+```{r fig.width=7, fig.height=6}
+sd.o = 0.25
+plot0(time,n,type='l',ylim=c(0,12))
+points(time,n+rnorm(NT,0,sd.o))
+```
+
+```{r,echo=3:4, fig.width=7, fig.height=6}
+ciEnvelope <- function(x,ylo,yhi,...){
+  polygon(cbind(c(x, rev(x), x[1]), c(ylo, rev(yhi),
+  ylo[1])), border = NA,...) 
+}
+plot0(time,n,type='l',ylim=c(0,12),
+     xlab="Time",ylab="Population Size")
+ciEnvelope(time,n-1.96*sd.o,n+1.96*sd.o,col="lightGrey")
+lines(time,n,lwd=3)
+points(time,n+rnorm(NT,0,sd.o))
+abline(h=0,v=0)
+#lines(time,n+1.96*sd.o,lty=2)
+#lines(time,n-1.96*sd.o,lty=2)
+
+
+```
+
+
+
+Observation error does not affect the underlying process itself. The process here is still deterministic, we're just observing it imperfectly
+
+
+Parameter Uncertainty
+-------------------------
+
+We next want to account for parameter uncertainty.
+
+To begin, we need to add parameters that describe our uncertainty in parameters
+
+```{r}
+r.sd = 0.2
+K.sd = 1.0
+NE = 10
+```
+
+
+```{r fig.width=7, fig.height=6}
+n = matrix(n0,NE,NT)
+rE = rnorm(NE,r,r.sd)
+KE = rnorm(NE,K,K.sd)  ## modify later for covariance
+for(i in 1:NE){
+  for(t in 2:NT){
+    n[i,t] = n[i,t-1] + rE[i]*n[i,t-1]*(1-n[i,t-1]/KE[i])
+  }
+}
+
+yrng = range(n)
+plot(time,n[1,],ylim=yrng,type='n',ylab="Population Size")
+for(i in 1:NE){
+  lines(time,n[i,])
+}
+```
+
+Next if we increase the ensemble size...
+
+```{r,echo=1, fig.width=7, fig.height=6}
+NE = 1000
+n = matrix(n0,NE,NT)
+rE = rnorm(NE,r,r.sd)
+KE = rnorm(NE,K,K.sd)  ## modify later for covariance
+for(i in 1:NE){
+  for(t in 2:NT){
+    n[i,t] = n[i,t-1] + rE[i]*n[i,t-1]*(1-n[i,t-1]/KE[i])
+  }
+}
+yrng = range(n)
+plot(time,n[1,],ylim=yrng,type='n',ylab="Population Size")
+for(i in 1:NE){
+  lines(time,n[i,])
+}
+hist(rE)
+hist(KE)
+```
+
+This is hard to visualize, so lets instead look at summary statistics
+
+```{r fig.width=7, fig.height=6}
+n.stats = apply(n,2,quantile,c(0.025,0.5,0.975))
+plot(time,n.stats[2,],ylim=yrng,type='n',ylab="Population Size")
+polygon(cbind(c(time, rev(time), 1), c(n.stats[1, ], rev(n.stats[3, ]),
+  n.stats[1, 1])), border = NA, col = 'lightblue')
+lines(time,n.stats[2,],lwd=2)
+```
+
+```{r fig.width=7, fig.height=6}
+n.stats = apply(n,2,quantile,c(0.025,0.25,0.5,0.75,0.975))
+plot(time,n.stats[2,],ylim=yrng,type='n',ylab="Population Size")
+polygon(cbind(c(time, rev(time), 1), c(n.stats[1, ], rev(n.stats[5, ]),
+  n.stats[1, 1])), border = NA, col = 'lightblue')
+polygon(cbind(c(time, rev(time), 1), c(n.stats[2, ], rev(n.stats[4, ]),
+  n.stats[2, 1])), border = NA, col = 'blue')
+lines(time,n.stats[3,],lwd=4,col="purple")
+```
+
+Sensitivity analysis at equilibrium
+
+```{r fig.width=9, fig.height=6}
+par(mfrow=c(1,2))
+plot(rE,n[,NT],ylim=yrng,ylab="Population Size")
+rlm <- lm(n[,NT]~rE)
+abline(rlm,col=2,lwd=4)
+summary(rlm)
+
+plot(KE,n[,NT],ylim=yrng,ylab="Population Size")
+Klm <- lm(n[,NT]~KE)
+abline(Klm,col=2,lwd=4)
+summary(Klm)
+```
+
+and at time = 5
+
+```{r fig.width=9, fig.height=6}
+par(mfrow=c(1,2))
+plot(rE,n[,5],ylim=yrng,ylab="Population Size")
+rlm <- lm(n[,5]~rE)
+abline(rlm,col=2,lwd=4)
+summary(rlm)
+
+plot(KE,n[,5],ylim=yrng,ylab="Population Size")
+Klm <- lm(n[,5]~KE)
+abline(Klm,col=2,lwd=4)
+summary(Klm)
+```
+
+and across all times...
+```{r fig.width=9, fig.height=6}
+rs <- Ks <- rr2 <- Kr2 <- 0
+for(i in 1:NT){
+  rlm <- lm(n[,i]~rE)
+  rs[i] <- coef(rlm)[2]
+  rr2[i] <- summary(rlm)$r.squared
+  
+  Klm <- lm(n[,i]~KE)
+  Ks[i] <- coef(Klm)[2]
+  Kr2[i] <- summary(Klm)$r.squared
+}
+par(mfrow=c(1,2))
+yrng <- range(c(rs,0))
+plot(time,n.stats[3,]/K*yrng[2],lwd=4,col="grey",ylim=yrng,ylab="Sensitivity",type='l')
+lines(time,rs,lwd=4)
+
+yrng <- range(c(Ks,0))
+plot(time,n.stats[3,]/K*yrng[2],lwd=4,col="grey",ylim=yrng,ylab="Sensitivity",type='l')
+lines(time,Ks,lwd=4)
+
+yrng <- range(c(rr2,0))
+plot(time,n.stats[3,]/K*yrng[2],lwd=4,col="grey",ylim=yrng,ylab="R-squared",type='l')
+lines(time,rr2,lwd=4)
+
+yrng <- range(c(Kr2,0))
+plot(time,n.stats[3,]/K*yrng[2],lwd=4,col="grey",ylim=yrng,ylab="R-squared",type='l')
+lines(time,Kr2,lwd=4)
+
+
+
+```
+
+And sensitivity of MSY
+```{r fig.width=7, fig.height=6}
+hist(rE*KE/4,xlab="harvest",main="Maximum Sustainable Yield")
+```
+
+
+If K is well known...
+
+```{r,echo=1, fig.width=7, fig.height=6}
+K.sd = 0.01
+n = matrix(n0,NE,NT)
+rE = rnorm(NE,r,r.sd)
+KE = rnorm(NE,K,K.sd)  ## modify later for covariance
+for(i in 1:NE){
+  for(t in 2:NT){
+    n[i,t] = n[i,t-1] + rE[i]*n[i,t-1]*(1-n[i,t-1]/KE[i])
+  }
+}
+yrng = range(n)
+hist(rE)
+hist(KE)
+n.stats = apply(n,2,quantile,c(0.025,0.5,0.975))
+plot(time,n.stats[2,],ylim=yrng,type='n',ylab="Population Size")
+polygon(cbind(c(time, rev(time), 1), c(n.stats[1, ], rev(n.stats[3, ]),
+  n.stats[1, 1])), border = NA, col = 'lightblue')
+lines(time,n.stats[2,],lwd=2)
+```
+
+Putting it together
+```{r}
+r.sd = 0.2
+K.sd = 1.0
+NE = 5000
+nr = nK = n = matrix(n0,NE,NT)
+rE = rnorm(NE,r,r.sd)
+KE = rnorm(NE,K,K.sd)  ## modify later for covariance
+for(i in 1:NE){
+  for(t in 2:NT){
+    n[i,t] = n[i,t-1] + rE[i]*n[i,t-1]*(1-n[i,t-1]/KE[i])
+    nr[i,t] = nr[i,t-1] + rE[i]*nr[i,t-1]*(1-nr[i,t-1]/K)
+    nK[i,t] = nK[i,t-1] + r*nK[i,t-1]*(1-nK[i,t-1]/KE[i])
+  }
+}
+
+layout(matrix(c(1,2,3,4,5,5),3,2,byrow=TRUE))
+layout.show(5)
+
+yrng = range(c(range(n),range(nr),range(nK)))
+# r
+#par(mar=c(1,4,4,2))
+par(mar=c(3,4,4,2))
+x = seq(min(rE),max(rE),length=500)
+plot(x,dnorm(x,r,r.sd),ylab="Density",type='l',
+     xlab="Intrinsic Growth Rate",
+     cex.lab=1.5,main="r",bty='l',cex.main=3,mgp=c(1.8,0.5,0))
+# K
+x = seq(min(KE),max(KE),length=500)
+plot(x,dnorm(x,K,K.sd),ylab="Density",type='l',
+     xlab="Carrying Capacity",
+     cex.lab=1.5,main="K",bty='l',cex.main=3,mgp=c(1.8,0.5,0))
+# r interval
+par(mar=c(3,4,1,2))
+nr.stats = apply(nr,2,quantile,c(0.025,0.5,0.975))
+plot(time,nr.stats[2,],ylim=yrng,type='n',bty='l',ylab="Population Size",cex.lab=1.5,mgp=c(1.8,0.5,0))
+ciEnvelope(time,nr.stats[1,],nr.stats[3,],col="lightGrey")
+lines(time,nr.stats[2,],lwd=3)
+
+# K interval
+nK.stats = apply(nK,2,quantile,c(0.025,0.5,0.975))
+plot(time,nK.stats[2,],ylim=yrng,type='n',bty='l',ylab="Population Size",cex.lab=1.5,mgp=c(1.8,0.5,0))
+ciEnvelope(time,nK.stats[1,],nK.stats[3,],col="lightGrey")
+lines(time,nK.stats[2,],lwd=3)
+
+# rK interval
+par(mar=c(3,4,4,2)+0.1)
+n.stats = apply(n,2,quantile,c(0.025,0.5,0.975))
+plot(time,n.stats[2,],ylim=yrng,type='n',bty='l',ylab="Population Size",
+     cex.main=2,main="r & K",cex.lab=1.5,mgp=c(1.8,0.5,0))
+ciEnvelope(time,n.stats[1,],n.stats[3,],col="lightGrey")
+lines(time,n.stats[2,],lwd=3)
+for(i in 1:10){
+  lines(time,n[i,],lty=2)
+}
+```
+
+Stochastic Population Growth
+-------------------------
+
+Lets return to the original model but now create the simplest stochastic version of the model by assuming additive noise
+
+```{r, fig.width=7, fig.height=6}
+n0=1
+n.sd = 0.25
+n = rep(n0,NT)
+for(t in 2:NT){
+  n[t] = n[t-1] + r*n[t-1]*(1-n[t-1]/K) + rnorm(1,0,n.sd)
+}
+plot(time,n,type='l',ylab="Population Size")
+```
+
+```{r fig.width=7, fig.height=6, echo=1}
+NE = 1000
+n = matrix(n0,NE,NT)
+for(i in 1:NE){
+  for(t in 2:NT){
+    n[i,t] = n[i,t-1] + r*n[i,t-1]*(1-n[i,t-1]/K) + rnorm(1,0,n.sd)
+  }
+}
+yrng = range(n)
+plot(time,n[1,],ylim=yrng,type='n',ylab="Population Size")
+for(i in 1:10){
+  lines(time,n[i,])
+}
+n.stats = apply(n,2,quantile,c(0.025,0.5,0.975))
+plot(time,n.stats[2,],ylim=yrng,type='n',bty='l',mgp=c(1.8,0.5,0),
+     xlab="Time",ylab="Population Size",cex.lab=1.5)
+polygon(cbind(c(time, rev(time), 1), c(n.stats[1, ], rev(n.stats[3, ]),
+  n.stats[1, 1])), border = NA, col = 'lightblue')
+lines(time,n.stats[2,],lwd=2)
+for(i in 1:3){
+  lines(time,n[i,],lty=3,lwd=2)
+}
+n.add = n
+```
+
+What if, instead, it is the parameters of the model that vary through time??
+
+```{r fig.width=7, fig.height=6}
+r.sd = 0.2
+K.sd = 1.0
+n = rep(n0,NT)
+for(t in 2:NT){  
+  rt = rnorm(1,r,r.sd)
+  Kt = rnorm(1,K,K.sd)
+  n[t] = n[t-1] + rt*n[t-1]*(1-n[t-1]/Kt)
+}
+plot(time,n,type='l',ylab="Population Size")
+```
+
+```{r fig.width=7, fig.height=6,echo=1}
+NE = 1000
+n1 = n2 = matrix(n0,NE,NT)
+for(i in 1:NE){
+  for(t in 2:NT){
+    rt = max(c(rnorm(1,r,r.sd),0.001))
+    Kt = rnorm(1,K,K.sd)
+    n1[i,t] = n1[i,t-1] + r*n1[i,t-1]*(1-n1[i,t-1]/K) + rnorm(1,0,n.sd)
+    n2[i,t] = n2[i,t-1] + rt*n2[i,t-1]*(1-n2[i,t-1]/Kt)
+  }
+}
+yrng = range(n2,na.rm=TRUE)
+#print(yrng)
+plot(time,n2[1,],ylim=yrng,type='n',ylab="Population Size")
+for(i in 1:10){
+  lines(time,n2[i,])
+}
+n2.stats = apply(n2,2,quantile,c(0.025,0.5,0.975))
+n1.stats = apply(n1,2,quantile,c(0.025,0.5,0.975))
+plot(time,n2.stats[2,],ylim=yrng,type='n',ylab="Population Size")
+polygon(cbind(c(time, rev(time), 1), c(n1.stats[1, ], rev(n1.stats[3, ]),
+  n1.stats[1, 1])), border = NA, col = 'lightgreen')
+tlb = rgb(173,216,230,100,maxColorValue = 255)
+polygon(cbind(c(time, rev(time), 1), c(n2.stats[1, ], rev(n2.stats[3, ]),
+  n2.stats[1, 1])), border = NA, col = tlb)
+lines(time,n2.stats[2,],lwd=2)
+lines(time,n1.stats[2,],lwd=2,col="green")
+
+## two panel version
+par(mfrow=c(2,1))
+plot(time,n2.stats[2,],ylim=yrng,type='n',
+     xlab="Time",ylab="Population Size",bty='l',
+     cex.main=2,main="Additive Variability",cex.lab=1.5,mgp=c(1.8,0.5,0))
+polygon(cbind(c(time, rev(time), 1), c(n1.stats[1, ], rev(n1.stats[3, ]),
+  n1.stats[1, 1])), border = NA, col = 'lightgrey')
+lines(time,n1.stats[2,],lwd=3)
+for(i in 1:3){
+  lines(time,n1[i,],lty=3,lwd=2)
+}
+plot(time,n2.stats[2,],ylim=yrng,type='n',
+     xlab="Time",ylab="Population Size",bty='l',
+     cex.main=2,main="Parameter Variability",cex.lab=1.5,mgp=c(1.8,0.5,0))
+polygon(cbind(c(time, rev(time), 1), c(n2.stats[1, ], rev(n2.stats[3, ]),
+  n2.stats[1, 1])), border = NA, col = tlb)
+lines(time,n2.stats[2,],lwd=2)
+for(i in 1:3){
+  lines(time,n2[i,],lty=3,lwd=2)
+}
+par(mfrow=c(1,1))
+```
+
+what if the parameters are not iid random but autocorrelated?
+
+```{r,echo=1:4, fig.width=7, fig.height=6}
+r = 0.3
+r.sd = 0.05
+K.sd = 1.5
+rho = 0.9
+NT = 100
+time = 1:NT
+rt = r; Kt = K
+n = rep(n0,NT)
+for(t in 2:NT){  
+  rt = rnorm(1,r*(1-rho)+rt*rho,r.sd)
+  Kt[t] = rnorm(1,K*(1-rho)+Kt[t-1]*rho,K.sd)
+  n[t] = n[t-1] + rt*n[t-1]*(1-n[t-1]/Kt[t])
+}
+plot(time,n,type='l',lwd=3,ylab="Population Size")
+lines(time,Kt,col=3,lty=2,lwd=3)
+legend("bottomright",legend=c("N","K"),col=c(1,3),lty=1:2,lwd=3)
+```
+
+Disturbance
+------------------
+
+```{r,echo=1:2, fig.width=7, fig.height=6}
+p.dist = 0.05
+n0 = 1
+r = .3
+K = 10
+NT = 30
+time = 1:NT
+NE = 10000
+n = matrix(n0,NE,NT)
+for(i in 1:NE){
+  for(t in 2:NT){
+    n[i,t] = n[i,t-1] + r*n[i,t-1]*(1-n[i,t-1]/K)
+    if(rbinom(1,1,p.dist)) n[i,t] = n0
+  }
+}
+
+plot(time,n[1,],type='l',ylab="Population Size")
+plot(time,n[1,],type='l',ylim=range(n),ylab="Population Size")
+for(i in 2:min(c(NE,50))){
+  lines(time,n[i,])
+}
+
+plot(time,n[1,],pch=".",ylim=range(n),ylab="Population Size")
+for(i in 2:min(c(NE,100))){
+  points(time,jitter(n[i,],amount=0.1),pch=".")
+}
+
+hist(n[,NT])
+hist(n[,(NT/2):NT],probability=TRUE)
+
+x = n[,(NT/2):NT]
+sum(x==n0)/length(x)
+
+yrng = range(n)
+n.stats = apply(n,2,quantile,c(0.025,0.5,0.975))
+plot(time,n.stats[2,],ylim=yrng,type='n',
+     xlab="Time",ylab="Population Size",bty='l',
+     cex.main=2,main="Disturbance",cex.lab=1.5,mgp=c(1.8,0.5,0))
+polygon(cbind(c(time, rev(time), 1), c(n.stats[1, ], rev(n.stats[3, ]),
+  n.stats[1, 1])), border = NA, col = 'lightgrey')
+lines(time,n.stats[2,],lwd=3)
+for(i in sample(1:NE,5)){
+  lines(time,n[i,],lwd=1.5,lty=3)
+}
+
+n.dens = matrix(0,NT,K)
+N = 1:K
+for(i in 1:NT){
+  h = hist(n[,i],breaks=0:10,plot=FALSE)
+  n.dens[i,] = h$counts
+  }
+image(time,N,n.dens,col=heat.colors(25))
+image(time,N,log(n.dens),col=heat.colors(25))
+
+plot(time,n.dens[,10]/NE,type='l',ylab="Population Size")
+for(i in 1:9) lines(time, n.dens[,i]/NE,col=i)
+```
+
+Equilibrium solution makes sense. Landscape appears to reach equilibrium almost as fast as undisturbed logistic
+
+Next question, can data assimilation follow this trajectory at the patch or landscape scale?
+
+Initial Conditions
+------------------
+
+```{r,echo=1:2, fig.width=7, fig.height=6}
+r = 0.3
+n0.sd = 0.6
+n0s = rlnorm(NE,log(n0),n0.sd)
+hist(n0s)
+n = matrix(n0s,NE,NT)
+for(i in 1:NE){
+  for(t in 2:NT){
+    n[i,t] = n[i,t-1] + r*n[i,t-1]*(1-n[i,t-1]/K)
+  }
+}
+yrng = range(n)
+plot(time,n[1,],ylim=yrng,type='n',ylab="Population Size")
+for(i in 1:10){
+  lines(time,n[i,])
+}
+n.stats = apply(n,2,quantile,c(0.025,0.5,0.975))
+plot(time,n.stats[2,],ylim=yrng,type='n',
+     xlab="Time",ylab="Population Size",bty='l',
+     cex.main=1.7,main="Initial Conditions",cex.lab=1.5,mgp=c(1.8,0.5,0))
+polygon(cbind(c(time, rev(time), 1), c(n.stats[1, ], rev(n.stats[3, ]),
+  n.stats[1, 1])), border = NA, col = 'lightgrey')
+lines(time,n.stats[2,],lwd=3)
+for(i in sample(1:NE,10)){
+  lines(time,n[i,],lwd=1.5,lty=3)
+}
+```
+
+### sensitivity to initial conditions
+```{r, fig.width=7, fig.height=6}
+r=2.8
+n0=0.1
+n = rep(n0,NT)
+for(t in 2:NT){
+  n[t] = n[t-1] + r*n[t-1]*(1-n[t-1]/K)
+}
+plot(time,n,type='l',ylab="Population Size")
+```
+
+```{r,echo=1:2, fig.width=7, fig.height=6}
+n0.sd = 0.3
+n0s = rlnorm(NE,log(n0),n0.sd)
+hist(n0s)
+n = matrix(n0s,NE,NT)
+for(i in 1:NE){
+  for(t in 2:NT){
+    n[i,t] = n[i,t-1] + r*n[i,t-1]*(1-n[i,t-1]/K)
+  }
+}
+yrng = range(n)
+plot(time,n[1,],ylim=yrng,type='n',ylab="Population Size")
+for(i in 1:10){
+  lines(time,n[i,])
+}
+n.stats = apply(n,2,quantile,c(0.025,0.5,0.975))
+plot(time,n.stats[2,],ylim=yrng,type='n',ylab="Population Size")
+polygon(cbind(c(time, rev(time), 1), c(n.stats[1, ], rev(n.stats[3, ]),
+  n.stats[1, 1])), border = NA, col = 'lightblue')
+lines(time,n.stats[2,],lwd=2)
+hist(n[,NT])
+```
+
+```{r,echo=1:2, fig.width=7, fig.height=6}
+n0=9
+n0.sd = 0.001
+n0s = rlnorm(NE,log(n0),n0.sd)
+hist(n0s)
+n = matrix(n0s,NE,NT)
+for(i in 1:NE){
+  for(t in 2:NT){
+    n[i,t] = n[i,t-1] + r*n[i,t-1]*(1-n[i,t-1]/K)
+  }
+}
+yrng = range(n)
+#plot(time,n[1,],ylim=yrng,type='n')
+#for(i in 1:10){
+#  lines(time,n[i,])
+#}
+n.stats = apply(n,2,quantile,c(0.025,0.5,0.975))
+plot(time,n.stats[2,],ylim=yrng,type='n',ylab="Population Size")
+polygon(cbind(c(time, rev(time), 1), c(n.stats[1, ], rev(n.stats[3, ]),
+  n.stats[1, 1])), border = NA, col = 'lightblue')
+lines(time,n.stats[2,],lwd=2)
+div = n[1,]-n[2,]
+```
+
+```{r,echo=1:2, fig.width=7, fig.height=6}
+n0=9
+n0.sd = 0.03
+n0s = rlnorm(NE,log(n0),n0.sd)
+hist(n0s)
+n = matrix(n0s,NE,NT)
+for(i in 1:NE){
+  for(t in 2:NT){
+    n[i,t] = n[i,t-1] + r*n[i,t-1]*(1-n[i,t-1]/K)
+  }
+}
+yrng = range(n)
+#plot(time,n[1,],ylim=yrng,type='n')
+#for(i in 1:10){
+#  lines(time,n[i,])
+#}
+n2.stats = n.stats
+n.stats = apply(n,2,quantile,c(0.025,0.5,0.975))
+plot(time,n.stats[2,],ylim=yrng,type='n',ylab="Population Size")
+polygon(cbind(c(time, rev(time), 1), c(n.stats[1, ], rev(n.stats[3, ]),
+  n.stats[1, 1])), border = NA, col = 'lightgreen')
+polygon(cbind(c(time, rev(time), 1), c(n2.stats[1, ], rev(n2.stats[3, ]),
+  n2.stats[1, 1])), border = NA, col = 'lightblue')
+lines(time,n.stats[2,],lwd=3,col="green4")
+lines(time,n2.stats[2,],lwd=2)
+legend("bottomright",legend=c(0.05,0.01),lty=1,col=c("lightgreen","lightblue"),lwd=15,cex=1.5)
+
+layout(matrix(c(1,1,2,3),2,2,byrow=TRUE))
+#one ensemble member
+r=2.8
+n0=9.0001
+n = rep(n0,NT)
+for(t in 2:NT){
+  n[t] = n[t-1] + r*n[t-1]*(1-n[t-1]/K)
+}
+plot(time,n,type='l',lwd=3,
+     xlab="Time",ylab="Population Size",bty='l',
+     cex.main=1.7,main="r = 2.8",cex.lab=1.5,mgp=c(1.8,0.5,0))
+# divergence
+
+#CI from moderate IC variability
+plot(time,n.stats[2,],ylim=yrng,type='n',
+     xlab="Time",ylab="Population Size",bty='l',
+     cex.main=1.7,main="sd = 0.03",cex.lab=1.5,mgp=c(1.8,0.5,0))
+polygon(cbind(c(time, rev(time), 1), c(n.stats[1, ], rev(n.stats[3, ]),
+  n.stats[1, 1])), border = NA, col = 'lightgrey')
+lines(time,n.stats[2,],lwd=3)
+
+#CI from tiny IC variability
+plot(time,n.stats[2,],ylim=yrng,type='n',
+     xlab="Time",ylab="Population Size",bty='l',
+     cex.main=1.7,main="sd = 0.001",cex.lab=1.5,mgp=c(1.8,0.5,0))
+polygon(cbind(c(time, rev(time), 1), c(n2.stats[1, ], rev(n2.stats[3, ]),
+  n2.stats[1, 1])), border = NA, col = 'lightgrey')
+lines(time,n2.stats[2,],lwd=3)
+
+
+
+
+```
+
+Rapidly diverge to 'climatology', whereby the model prediction does no better than summary statistics
+
+### Foreshadowing: Data Assimilation in a Chaotic System
+```{r, fig.width=7, fig.height=6}
+r=2.8
+K=10
+n0=9.01
+sd.o = 0.25
+n.true = rep(n0,NT)
+for(t in 2:NT){
+  n.true[t] = n.true[t-1] + r*n.true[t-1]*(1-n.true[t-1]/K)
+}
+n.obs = rnorm(NT,n.true,sd.o)
+plot(time,n.true,type='l',ylab="Population Size")
+points(time,n.obs,pch=18)
+legend("bottomright",legend=c("True","Obs"),lty=1:0,pch=c(NA,18),lwd=2)
+```
+
+```{r,echo=FALSE, fig.width=7, fig.height=6}
+n0.sd = 0.01
+n0s = rlnorm(NE,log(n0),n0.sd)
+ne = matrix(n0s,NE,NT)
+for(i in 1:NE){
+  for(t in 2:NT){
+    ne[i,t] = ne[i,t-1] + r*ne[i,t-1]*(1-ne[i,t-1]/K)
+  }
+}
+yrng = range(ne)
+n.stats = apply(ne,2,quantile,c(0.025,0.5,0.975))
+
+## initial ensemble
+ens = matrix(NA,NT*2+1,NE)
+ens[1,] = rlnorm(NE,log(n0),n0.sd)
+Xae = Pae = 0
+Xfe = mean(ens[1,])
+Pfe = var(ens[1,])
+for(i in 1:NT){
+  
+  ##Approximate forecast with Normal
+  k = 2*(i-1)+1
+  Xfe[i] = mean(ens[k,])
+  Pfe[i] = var(ens[k,])
+  
+  ## analysis step: combine previous forecast with observed data
+  H <- matrix(1,ncol=1)
+  Kg <- Pfe[i] * t(H) %*% solve(H%*%Pfe[i]%*%t(H) + sd.o)
+  Xae[i] <- Xfe[i] + Kg*(n.obs[i] - Xfe[i]) 
+  Pae[i] <- (1-Kg %*% H)*Pfe[i]    
+  
+  ## generate new ensemble
+  ens[k+1,] = rnorm(NE,Xae[i],sqrt(Pae[i]))
+  
+  ## Forecast step: predict to next step from current
+  ens[k+2,] = ens[k+1,] + r*ens[k+1,]*(1-ens[k+1,]/K)
+
+#  Xfe[i+1] = m*Xa[i] + beta[2]
+#  Pfe[i+1] = q + m*Pa[i]*m
+  
+}
+fx = ens[2*(1:NT)-1,]
+fx.stats = apply(fx,1,quantile,c(0.025,0.5,0.975))
+plot(time,fx.stats[2,],col="blue",ylim=yrng,type='n',ylab="Population Size")
+polygon(cbind(c(time, rev(time), 1), c(n.stats[1, ], rev(n.stats[3, ]),
+  n.stats[1, 1])), border = NA, col = 'lightblue')
+polygon(cbind(c(time, rev(time), 1), c(fx.stats[1, ], rev(fx.stats[3, ]),
+  fx.stats[1, 1])), border = NA, col = 'lightgreen')
+#lines(time,fx.stats[2,],lwd=4,col="green4")
+#lines(time,n.stats[2,],lwd=2,col="blue4")
+lines(time,n.true,type='l',lwd=2)
+points(time,n.obs,pch=18,col=2)
+legend("bottomright",legend=c("True","Obs","EnKF","Model"),lty=c(1,0,1,1),col=c(1,2,"lightgreen","lightblue"),lwd=c(1,NA,15,15),cex=1.25,pch=c(NA,18,NA,NA))
+```
+
+### Assimilation of disturbance
+
+"True" run
+
+```{r,echo=1:2, fig.width=7, fig.height=6}
+p.dist = 0 #0.05
+n0 = 1
+r = .3
+K = 10
+n.sd = 0.35
+NT = 100
+time = 1:NT
+NE = 1
+n = matrix(n0,NE,NT)
+for(i in 1:NE){
+  for(t in 2:NT){
+    n[i,t] = n[i,t-1] + r*n[i,t-1]*(1-n[i,t-1]/K) + rnorm(1,0,n.sd)
+    if(rbinom(1,1,p.dist)) n[i,t] = abs(rnorm(1,n0,0.5))
+  }
+}
+
+#plot(time,n[1,],type='l',ylab="Population Size")
+plot(time,n[1,],type='l',ylim=range(n),ylab="Population Size",lwd=3)
+obs.sd = 0.5
+n.true=n[1,]
+n.obs = rnorm(NT,n.true,obs.sd)
+points(time,n.obs,pch=18,col=2,cex=1.5)
+na.seq = 1:NT; na.seq=na.seq[-seq(1,NT,by=5)]
+n.fia = n.obs;n.fia[na.seq] <- NA
+points(time,n.fia,pch=18,col="blue",cex=2)
+```
+
+```{r,echo=FALSE, fig.width=7, fig.height=6}
+n0.sd = n.sd
+NE = 1000
+n0s = rlnorm(NE,log(n0),n0.sd)
+ne = matrix(n0s,NE,NT)
+for(i in 1:NE){
+  for(t in 2:NT){
+    ne[i,t] = abs(ne[i,t-1] + r*ne[i,t-1]*(1-ne[i,t-1]/K) + rnorm(1,0,n.sd))
+    if(rbinom(1,1,p.dist)) ne[i,t] = abs(rnorm(1,n0,0.5))
+  }
+}
+yrng = range(ne)
+n.stats = apply(ne,2,quantile,c(0.025,0.5,0.975))
+
+## initial ensemble
+ens = matrix(NA,NT*2+1,NE)
+ens[1,] = rlnorm(NE,log(n0),n0.sd)
+Xae = Pae = 0
+Xfe = mean(ens[1,])
+Pfe = var(ens[1,])
+for(i in 1:NT){
+  
+  ##Approximate forecast with Normal
+  k = 2*(i-1)+1
+  Xfe[i] = mean(ens[k,])
+  Pfe[i] = var(ens[k,])
+  
+  ## analysis step: combine previous forecast with observed data
+  H <- matrix(1,ncol=1)
+  Kg <- Pfe[i] * t(H) %*% solve(H%*%Pfe[i]%*%t(H) + obs.sd)
+  if(!is.na(n.obs[i])){
+    Xae[i] <- Xfe[i] + Kg*(n.obs[i] - Xfe[i]) 
+  }else{
+    Xae[i] <- Xfe[i]
+  }
+  Pae[i] <- (1-Kg %*% H)*Pfe[i]    
+  
+  ## generate new ensemble
+  ens[k+1,] = rnorm(NE,Xae[i],sqrt(Pae[i]))
+  
+  ## Forecast step: predict to next step from current
+  ens[k+2,] = ens[k+1,] + r*ens[k+1,]*(1-ens[k+1,]/K) + rnorm(NE,0,n.sd) 
+  disturbed = as.logical(rbinom(NE,1,p.dist))
+  ens[k+2,disturbed] = abs(rnorm(sum(disturbed),n0,0.5)) ## disturbance
+
+#  Xfe[i+1] = m*Xa[i] + beta[2]
+#  Pfe[i+1] = q + m*Pa[i]*m
+  
+}
+fx = ens[2*(1:NT)-1,]
+fx.stats = apply(fx,1,quantile,c(0.025,0.25,0.5,0.75,0.975))
+plot(time,fx.stats[5,],col="blue",ylim=yrng,type='n',ylab="Population Size",cex.lab=1.5)
+polygon(cbind(c(time, rev(time), 1), c(n.stats[1, ], rev(n.stats[3, ]),
+  n.stats[1, 1])), border = NA, col = 'lightblue')
+polygon(cbind(c(time, rev(time), 1), c(fx.stats[1, ], rev(fx.stats[5, ]),
+  fx.stats[1, 1])), border = NA, col = 'lightgreen')
+polygon(cbind(c(time, rev(time), 1), c(fx.stats[2, ], rev(fx.stats[4, ]),
+  fx.stats[2, 1])), border = NA, col = 'green4')
+#lines(time[-NT],fx.stats[2,-1],lwd=4,col="green")
+lines(time,n.stats[2,],lwd=2,col="blue4")
+lines(time,n.true,type='l',lwd=2)
+points(time,n.obs,pch=18,col=2)
+legend("topleft",legend=c("True","Obs","95%","IQR","Model"),lty=c(1,0,1,1,1),col=c(1,2,"lightgreen","green4","lightblue"),lwd=c(1,NA,15,15,15),cex=1.2,pch=c(NA,18,NA,NA,NA))
+```
+
+```{r,echo=1:2, fig.width=7, fig.height=6}
+p.dist = 0.05
+n0 = 1
+r = .3
+K = 10
+NT = 30
+time = 1:NT
+NE = 1000
+n = matrix(n0,NE,NT)
+for(i in 1:NE){
+  for(t in 2:NT){
+    n[i,t] = n[i,t-1] + r*n[i,t-1]*(1-n[i,t-1]/K)
+    if(rbinom(1,1,p.dist)) n[i,t] = n0
+  }
+}
+
+plot(time,n[1,],type='l',ylab="Population Size")
+plot(time,n[1,],type='l',ylim=range(n),ylab="Population Size")
+for(i in 2:min(c(NE,50))){
+  lines(time,n[i,])
+}
+
+plot(time,n[1,],pch=".",ylim=range(n),ylab="Population Size")
+for(i in 2:min(c(NE,100))){
+  points(time,jitter(n[i,],amount=0.1),pch=".")
+}
+
+hist(n[,NT])
+hist(n[,(NT/2):NT],probability=TRUE)
+
+x = n[,(NT/2):NT]
+sum(x==n0)/length(x)
+
+n.stats = apply(n,2,quantile,c(0.025,0.5,0.975))
+plot(time,n.stats[2,],ylim=yrng,type='n',ylab="Population Size")
+polygon(cbind(c(time, rev(time), 1), c(n.stats[1, ], rev(n.stats[3, ]),
+  n.stats[1, 1])), border = NA, col = 'lightgreen')
+
+n.dens = matrix(0,NT,K)
+N = 1:K
+for(i in 1:NT){
+  h = hist(n[,i],breaks=0:10,plot=FALSE)
+  n.dens[i,] = h$counts
+  }
+image(time,N,n.dens,col=heat.colors(25))
+image(time,N,log(n.dens),col=heat.colors(25))
+
+plot(time,n.dens[,10]/NE,type='l',ylab="Population Size")
+for(i in 1:9) lines(time, n.dens[,i]/NE,col=i)
+```
