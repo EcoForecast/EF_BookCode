@@ -1,0 +1,531 @@
+---
+title: "Chapter 13 - MC Data Assimilation"
+author: "Mike Dietze"
+date: "June 17, 2015"
+output: html_document
+---
+
+## Illustration: simple Ensemble Adjustment KF
+```{r}
+ciEnvelope <- function(x,ylo,yhi,...){
+  polygon(cbind(c(x, rev(x), x[1]), c(ylo, rev(yhi),
+                                      ylo[1])), border = NA,...) 
+}
+
+## KF Analysis
+KF.analysis <- function(mu.f,p.f,Yi,r){
+  prec.a = 1/p.f+1/r
+  p.a = 1/prec.a
+  mu.a = (mu.f/p.f + Yi/r)/prec.a
+  return(list(mu.a=mu.a,p.a=p.a))
+}
+
+m = 0.5
+X = 10
+q = 1
+r = 1
+nt = 3
+for(t in 2:nt){
+  X[t] = rnorm(1,m*X[t-1],sqrt(q))
+}
+Y = rnorm(nt,X,sqrt(r))
+#Y[1] = NA
+plot(Y,ylim = range(c(X,Y),na.rm=TRUE))
+lines(X)
+
+n = 25
+N = matrix(NA,n,2*nt)
+N[,2] = rnorm(n,10,2)
+for(t in 2:nt){
+  ## Forecast
+  N[,2*t-1] = rnorm(n,m*N[,2*(t-1)],q)
+  mu.f = mean(N[,2*t-1])
+  p.f = var(N[,2*t-1])
+  
+  ## Analysis
+  a = KF.analysis(mu.f,p.f,Y[t],r)
+  N[,2*t] = (N[,2*t-1] - mu.f)*a$p.a/p.f + a$mu.a
+}
+time = rep(1:nt,each=2)+rep(c(-0.05,0.05),times=nt)
+
+rng = range(c(range(N,na.rm=TRUE),range(c(X,Y),na.rm=TRUE)))
+plot(Y,ylim = rng,xlab="Time",cex=1.5,cex.lab=1.4,pch=16)
+for(i in 1:5){
+  lines(time,N[i,],lwd=2)
+}
+abline(v=time[-1],lty=3)
+text(seq(1.5,3,by=0.5),rng[2],c("F","A","F","A"),cex=2)
+
+```
+
+
+## Illustration: Filter Divergence
+```{r}
+
+m = 0.5
+X = 0
+q = 1
+r = 1
+nt = 20
+for(t in 2:nt){
+  X[t] = rnorm(1,m*X[t-1],sqrt(q))
+}
+Y = rnorm(nt,X,sqrt(r))
+#Y[1] = NA
+plot(Y,ylim = range(c(X,Y),na.rm=TRUE))
+lines(X)
+
+## correct filter
+q=1
+n = 25
+N = matrix(NA,n,2*nt)
+N[,2] = rnorm(n,Y[1],2)
+for(t in 2:nt){
+  ## Forecast
+  N[,2*t-1] = rnorm(n,m*N[,2*(t-1)],q)
+  mu.f = mean(N[,2*t-1])
+  p.f = var(N[,2*t-1])
+  
+  ## Analysis
+  a = KF.analysis(mu.f,p.f,Y[t],r)
+  N[,2*t] = (N[,2*t-1] - mu.f)*a$p.a/p.f + a$mu.a
+}
+time = rep(1:nt,each=2)+rep(c(-0.05,0.05),times=nt)
+CI.EnKF = matrix(NA,3,2*nt)
+mu = apply(N,2,mean)
+p = apply(N,2,sd)
+CI.EnKF[2,] = mu
+CI.EnKF[1,] = mu - 1.96*p
+CI.EnKF[3,] = mu + 1.96*p
+
+## divergent filter
+q=.1
+n = 25
+N = matrix(NA,n,2*nt)
+N[,2] = rnorm(n,Y[1],2)
+for(t in 2:nt){
+  ## Forecast
+  N[,2*t-1] = rnorm(n,m*N[,2*(t-1)],q)
+  mu.f = mean(N[,2*t-1])
+  p.f = var(N[,2*t-1])
+  
+  ## Analysis
+  a = KF.analysis(mu.f,p.f,Y[t],r)
+  N[,2*t] = (N[,2*t-1] - mu.f)*a$p.a/p.f + a$mu.a
+}
+time = rep(1:nt,each=2)+rep(c(-0.05,0.05),times=nt)
+CI.EnKFd = matrix(NA,3,2*nt)
+mu = apply(N,2,mean)
+p = apply(N,2,sd)
+CI.EnKFd[2,] = mu
+CI.EnKFd[1,] = mu - 1.96*p
+CI.EnKFd[3,] = mu + 1.96*p
+
+sq = seq(2,2*nt,by=2)
+rng = range(c(range(N,na.rm=TRUE),range(c(X,Y),na.rm=TRUE)))
+plot(Y,ylim = rng,xlab="Time",cex=1.5,cex.lab=1.4,pch=16)
+
+col=col2rgb("darkgrey")
+col2=rgb(col[1],col[2],col[3],0.9*256,maxColorValue=256)
+ciEnvelope(1:nt,CI.EnKFd[1,sq],CI.EnKFd[3,sq],col=col2)
+col=col2rgb("lightgrey")
+col1=rgb(col[1],col[2],col[3],0.4*256,maxColorValue=256)
+ciEnvelope(1:nt,CI.EnKF[1,sq],CI.EnKF[3,sq],col=col1)
+
+lines(CI.EnKF[2,sq],col="lightgrey",lwd=3)
+lines(CI.EnKFd[2,sq],col="white",lwd=3)
+points(Y,pch=16,cex=1.5)
+
+legend("topright",legend=c("Proc Var = 1.0","Proc Var = 0.1","Obs"),lwd=10,col=c(col1,col2,1),lty=c(1,1,NA),cex=1.7,pch=c(NA,NA,16))
+
+
+```
+
+
+
+# Extending beyond the Kalman Family...
+
+## Example time series
+```{r}
+m = 0.9
+X = 10
+q = 0.5^2
+r = 0.25^2
+nt = 100
+for(t in 2:nt){
+  X[t] = rnorm(1,m*X[t-1],sqrt(q))
+}
+Y = rnorm(nt,X,sqrt(r))
+plot(Y,ylim = range(c(X,Y)))
+lines(X)
+```
+
+## State space fit
+
+```{r}
+library(rjags)
+LinStateSpace <- "
+model{
+  X0 ~ dnorm(mu0,pa0)
+  q  ~ dgamma(aq,bq)
+  r  ~ dgamma(ar,br)
+  m  ~ dnorm(m0,s)
+
+  for(i in 1:nt){
+    Y[i] ~ dnorm(X[i],r)
+    X[i] ~ dnorm(mu[i],q)
+
+  }
+  mu[1] <- X0
+  for(i in 2:nt){
+    mu[i] <- m*X[i-1]
+  }
+ 
+}"
+
+## Run individual models
+data = list(Y=Y,nt=nt,mu0=0,pa0=1e-6,aq=0.1,bq=0.1,ar=0.1,br=0.1,m0=0,s=1e-6)
+ mod <- jags.model(file=textConnection(LinStateSpace),
+                   data=data,
+                  n.adapt=1000,n.chains=3,
+                  init=list(X0=0))
+ jdat <- coda.samples(mod,variable.names=c("m","r","q"),n.iter=3000) ## burnin
+ #plot(jdat)
+ jdat <- coda.samples(mod,variable.names=c("m","r","q","X"),n.iter=30000) ## samples
+
+## summarize output
+CI <- apply(as.matrix(jdat),2,quantile,c(0.025,0.5,0.975))
+CIX <- CI[,grep(pattern = "X",colnames(CI))]
+
+col=col2rgb("blue")
+plot(Y,ylim = range(c(X,Y)))
+ciEnvelope(1:nt,CIX[1,],CIX[3,],col=rgb(col[1],col[2],col[3],0.3*256,maxColorValue=256))
+lines(X,lwd=2)
+lines(CIX[2,],col="blue",lwd=2)
+
+
+
+```
+
+
+## Fit via KF
+```{r}
+
+## KF Forecast
+KF.forecast <- function(mu.a,p.a,m,q){
+  mu.f = m*mu.a
+  p.f = m^2*p.a + q
+  return(list(mu.f=mu.f,p.f=tau.f))
+}
+
+## KF Analysis
+KF.analysis <- function(mu.f,p.f,Yi,r){
+  prec.a = 1/p.f+1/r
+  p.a = 1/prec.a
+  mu.a = (mu.f/p.f + Yi/r)/prec.a
+  return(list(mu.a=mu.a,p.a=p.a))
+}
+
+## Forecast Cycle
+Xf = data$mu0
+pf = 1/data$pa0
+a = KF.analysis(Xf,pf,Y[1],r)
+Xa = a$mu.a
+pa = a$p.a
+for(t in 2:nt){
+  ## Forecast
+  f = KF.forecast(Xa[t-1],pa[t-1],m,q)
+  Xf[t] = f$mu.f
+  pf[t] = f$p.f
+  ## Analysis
+  a = KF.analysis(Xf[t],pf[t],Y[t],r)
+  Xa[t] = a$mu.a
+  pa[t] = a$p.a
+}
+CI.KF = matrix(NA,3,nt)
+CI.KF[2,] = Xa
+CI.KF[1,] = Xa - 1.96*sqrt(pa)
+CI.KF[3,] = Xa + 1.96*sqrt(pa)
+
+plot(Y,ylim = range(c(X,Y)))
+col=col2rgb("red")
+ciEnvelope(1:nt,CI.KF[1,],CI.KF[3,],col=rgb(col[1],col[2],col[3],0.3*256,maxColorValue=256))
+col=col2rgb("blue")
+ciEnvelope(1:nt,CIX[1,],CIX[3,],col=rgb(col[1],col[2],col[3],0.3*256,maxColorValue=256))
+lines(X,lwd=2)
+lines(CIX[2,],col="red",lwd=2)
+lines(CIX[2,],col="blue",lwd=2)
+```
+
+
+## Fit via EnKF
+
+```{r}
+EnKF.forecast <- function(mu.a,p.a,m,q,ne){
+  x.ic = rnorm(ne,mu.a,sqrt(p.a))
+  x.f  = rnorm(ne,m*x.ic,sqrt(q))
+  return(list(mu.f=mean(x.f),p.f=var(x.f)))
+}
+ne=100
+
+## Forecast Cycle
+Xef = data$mu0
+pef = 1/data$pa0
+a = KF.analysis(Xef,pef,Y[1],r)
+Xea = a$mu.a
+pea = a$p.a
+for(t in 2:nt){
+  ## Forecast
+  f = EnKF.forecast(Xea[t-1],pea[t-1],m,q,ne)
+  Xef[t] = f$mu.f
+  pef[t] = f$p.f
+  ## Analysis
+  a = KF.analysis(Xef[t],pef[t],Y[t],r)
+  Xea[t] = a$mu.a
+  pea[t] = a$p.a
+}
+CI.EnKF = matrix(NA,3,nt)
+CI.EnKF[2,] = Xea
+CI.EnKF[1,] = Xea - 1.96*sqrt(pea)
+CI.EnKF[3,] = Xea + 1.96*sqrt(pea)
+
+plot(Y,ylim = range(c(X,Y)))
+col=col2rgb("green")
+ciEnvelope(1:nt,CI.EnKF[1,],CI.EnKF[3,],col=rgb(col[1],col[2],col[3],0.3*256,maxColorValue=256))
+col=col2rgb("red")
+ciEnvelope(1:nt,CI.KF[1,],CI.KF[3,],col=rgb(col[1],col[2],col[3],0.3*256,maxColorValue=256))
+col=col2rgb("blue")
+ciEnvelope(1:nt,CIX[1,],CIX[3,],col=rgb(col[1],col[2],col[3],0.3*256,maxColorValue=256))
+lines(X,lwd=2)
+lines(CIX[2,],col="red",lwd=2)
+lines(CI.KF[2,],col="blue",lwd=2)
+lines(CI.EnKF[2,],col="green",lwd=2)
+
+```
+
+
+
+## Fit treating r and q as unknowns, Ensemble Forecast
+```{r}
+LinFilterQ <- "
+model{
+  ## Forecast
+  X.ic ~ dnorm(mu0,pa0)
+  q  ~ dgamma(aq,bq)
+  mu <- m*X.ic
+  X  ~ dnorm(mu,q)
+
+  ## Analysis
+  Y  ~ dnorm(X,r)
+}"
+
+
+## Forecast Cycle
+CI.LFq = matrix(NA,3,nt)
+Xl = data$mu0
+pl = data$pa0
+aqq = bqq = 0.1
+for(t in 1:nt){
+  ## Forecast + Analysis
+  update = list(Y=Y[t],mu0=Xl,pa0=pl,aq=aqq[t],bq=bqq[t],r=1/r,m=m)
+  mod <- jags.model(file=textConnection(LinFilterQ),
+                   data=update,
+                  n.adapt=1000,n.chains=3,
+                  init=list(X.ic=Xl))
+ jdat <- coda.samples(mod,variable.names=c("q","X"),n.iter=10000) 
+# plot(jdat)
+  
+  ## update parameters  
+  dat = as.matrix(jdat)
+  Xl  = mean(dat[,"X"])
+  pl  = 1/var(dat[,"X"])
+  CI.LFq[,t] = quantile(dat[,"X"],c(0.025,0.5,0.975))
+  mq = mean(dat[,"q"])
+  vq = var(dat[,"q"])
+  aqq[t+1] = mq*mq/vq
+  bqq[t+1] = mq/vq
+}
+jdat.lfq <- jdat
+
+par(mfrow=c(1,2))
+plot(aqq)
+plot(bqq)
+
+par(mfrow=c(1,1))
+dat = as.matrix(jdat.lfq)
+plot(density(dat[,"q"]))
+abline(v=1/q)
+
+par(mfrow=c(1,1))
+plot(Y,ylim = range(c(X,Y)))
+col=col2rgb("darkgrey")
+ciEnvelope(1:nt,CI.LFq[1,],CI.LFq[3,],col=rgb(col[1],col[2],col[3],0.3*256,maxColorValue=256))
+lines(CI.LFq[2,],col="white")
+```
+
+
+
+## Fit treating r and q as unknowns, Ensemble Forecast
+```{r}
+LinFilter <- "
+model{
+  ## Forecast
+  X.ic ~ dnorm(mu0,pa0)
+  q  ~ dgamma(aq,bq)
+  mu <- m*X.ic
+  X  ~ dnorm(mu,q)
+
+  ## Analysis
+  Y  ~ dnorm(X,r)
+  r  ~ dgamma(ar,br)
+}"
+
+
+## Forecast Cycle
+CI.LF = matrix(NA,3,nt)
+Xl = data$mu0
+pl = data$pa0
+aq = bq = ar = br = 0.1
+for(t in 1:nt){
+  ## Forecast + Analysis
+  update = list(Y=Y[t],mu0=Xl,pa0=pl,aq=aq[t],bq=bq[t],ar=ar[t],br=br[t],m=m)
+  mod <- jags.model(file=textConnection(LinFilter),
+                   data=update,
+                  n.adapt=1000,n.chains=3,
+                  init=list(X.ic=Xlf))
+ jdat <- coda.samples(mod,variable.names=c("r","q","X"),n.iter=10000) 
+# plot(jdat)
+  
+  ## update parameters  
+  dat = as.matrix(jdat)
+  Xl  = mean(dat[,"X"])
+  pl  = 1/var(dat[,"X"])
+  CI.LF[,t] = quantile(dat[,"X"],c(0.025,0.5,0.975))
+  mq = mean(dat[,"q"])
+  vq = var(dat[,"q"])
+  aq[t+1] = mq*mq/vq
+  bq[t+1] = mq/vq
+  mr = mean(dat[,"r"])
+  vr = var(dat[,"r"])
+  ar[t+1] = mr*mr/vr
+  br[t+1] = mr/vr
+ 
+}
+jdat.lf <- jdat
+
+par(mfrow=c(2,2))
+plot(ar)
+plot(br)
+plot(aq)
+plot(bq)
+
+par(mfrow=c(1,2))
+plot(density(dat[,"r"]))
+abline(v=1/r)
+plot(density(dat[,"q"]))
+abline(v=1/q)
+
+par(mfrow=c(1,1))
+plot(Y,ylim = range(c(X,Y)))
+col=col2rgb("purple")
+ciEnvelope(1:nt,CI.LF[1,],CI.LF[3,],col=rgb(col[1],col[2],col[3],0.3*256,maxColorValue=256))
+
+```
+
+
+
+## Fit treating r, q, and m as unknowns
+```{r}
+LinFilterParam <- "
+model{
+  ## Forecast
+  m ~ dnorm(mu.m,tau.m)
+  X.ic ~ dnorm(mu0,pa0)
+  q  ~ dgamma(aq,bq)
+  mu <- m*X.ic
+  X  ~ dnorm(mu,q)
+
+  ## Analysis
+  Y  ~ dnorm(X,r)
+  r  ~ dgamma(ar,br)
+}"
+
+
+## Forecast Cycle
+CI.LFP = matrix(NA,3,nt)
+Xl = data$mu0
+pl = data$pa0
+aqp = bqp = arp = brp = 0.1
+mu.m = 0
+p.m  = 1e-6
+for(t in 1:nt){
+  ## Forecast + Analysis
+  update = list(Y=Y[t],mu0=Xl,pa0=pl,aq=aqp[t],bq=bqp[t],ar=arp[t],br=brp[t],mu.m=mu.m[t],tau.m=p.m[t])
+  mod <- jags.model(file=textConnection(LinFilterParam),
+                   data=update,
+                  n.adapt=1000,n.chains=3,
+                  init=list(X.ic=Xlf))
+ jdat <- coda.samples(mod,variable.names=c("m","r","q","X"),n.iter=10000) 
+# plot(jdat)
+  
+  ## update parameters  
+  dat = as.matrix(jdat)
+  Xl  = mean(dat[,"X"])
+  pl  = 1/var(dat[,"X"])
+  CI.LFP[,t] = quantile(dat[,"X"],c(0.025,0.5,0.975))
+  mq = mean(dat[,"q"])
+  vq = var(dat[,"q"])
+  aqp[t+1] = mq*mq/vq
+  bqp[t+1] = mq/vq
+  mr = mean(dat[,"r"])
+  vr = var(dat[,"r"])
+  arp[t+1] = mr*mr/vr
+  brp[t+1] = mr/vr
+  mu.m[t+1] = mean(dat[,"m"])
+  p.m[t+1] = 1/var(dat[,"m"])
+}
+jdat.lfp <- jdat
+
+par(mfrow=c(2,3))
+plot(arp)
+plot(brp)
+plot(aqp)
+plot(bqp)
+plot(mu.m,ylim=c(0,1))
+  abline(h=m,lty=2)
+plot(p.m)
+
+par(mfrow=c(1,3))
+plot(density(dat[,"r"]))
+abline(v=1/r)
+plot(density(dat[,"q"]))
+abline(v=1/q)
+plot(density(dat[,"m"]))
+abline(v=m)
+
+par(mfrow=c(1,1))
+plot(Y,ylim = range(c(X,Y)),xlim=c(0,50),xlab="Time",cex.lab=1.4,cex.axis=1.2)
+col=col2rgb("lightgrey")
+col1=rgb(col[1],col[2],col[3],0.4*256,maxColorValue=256)
+ciEnvelope(1:nt,CI.LFP[1,],CI.LFP[3,],col=col1)
+col=col2rgb("grey")
+col2=rgb(col[1],col[2],col[3],0.6*256,maxColorValue=256)
+ciEnvelope(1:nt,CI.LF[1,],CI.LF[3,],col=col2)
+col=col2rgb("darkgrey")
+col3=rgb(col[1],col[2],col[3],256,maxColorValue=256)
+ciEnvelope(1:nt,CI.LFq[1,],CI.LFq[3,],col=col3)
+lines(X,lwd=3)
+lines(CI.LFq[2,],col="white",lwd=3)
+points(Y)
+legend("topright",legend=c("Proc","Proc+Obs","Proc+Obs+Param"),lwd=10,col=c(col3,col2,col1),cex=1.7)
+text(22,9.8,paste("q =",q),cex=1.7,pos=4)
+text(22,9,paste("r =",r),cex=1.7,pos=4)
+text(22,8.2,paste("m =",m),cex=1.7,pos=4)
+#col=col2rgb("red")
+#ciEnvelope(1:nt,CI.KF[1,],CI.KF[3,],col=rgb(col[1],col[2],col[3],0.3*256,maxColorValue=256))
+```
+
+
+
+
+
