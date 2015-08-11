@@ -6,3 +6,11 @@
 
 # R data files from past sessions
 .Rdata
+.Rproj.user
+
+## output from knitr
+*.html
+*.md
+
+## figures
+*.tiff

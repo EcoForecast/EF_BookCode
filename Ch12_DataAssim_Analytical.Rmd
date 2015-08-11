@@ -1,0 +1,186 @@
+---
+title: "Chapter 12 - Data Assimilation"
+author: "Mike Dietze"
+date: "June 15, 2015"
+output: html_document
+---
+
+
+## Kalman Filter
+
+```{r}
+##### define parameters
+mu = 2    # prior mean
+tau = 3   # prior sd
+Y = 0     # observation
+sigma = 2 # observation sd
+```
+
+
+### Helper functions
+
+```{r}
+filled.dnorm <- function(x,mu,tau,vertical=TRUE,offset=0,...){
+  if(vertical){
+    polygon(c(0,dnorm(x,mu,tau),0)+offset,c(x[1],x,x[length(x)]),...)
+  }else{
+    polygon(c(x[1],x,x[length(x)]),c(0,dnorm(x,mu,tau),0)+offset,...)  
+  }
+}
+
+filled.density <- function(x,adjust,vertical=TRUE,offset=0,...){
+  den = density(x,adjust=adjust)
+  if(vertical){
+    polygon(c(0,den$y,0)+offset,c(den$x[1],den$x,den$x[length(den$x)]),...)
+  }else{
+    polygon(c(den$x[1],den$x,den$x[length(x)]),c(0,den$y,0)+offset,...)  
+  }
+}
+
+
+col.alpha <- function(col,alpha=1){
+  rgb = col2rgb(col)
+  rgb(rgb[1],rgb[2],rgb[3],alpha*255,maxColorValue=255)
+}
+
+
+plot.KFupdate <- function(mu,tau,Y,sigma){
+  
+  xlim = range(qnorm(c(0.01,0.99),mu,tau),qnorm(c(0.01,0.99),Y,sigma))
+
+  prec.new = (1/tau^2+1/sigma^2)
+  mu.new = (mu/tau^2+Y/sigma^2)/prec.new
+  sigma.new = sqrt(1/prec.new)
+
+  x = seq(xlim[1],xlim[2],length=1000)
+  ylim=c(0,max(dnorm(x,mu.new,sigma.new)))
+
+  alpha=0.4
+  plot(x,dnorm(x,mu,tau),xlim=xlim,ylim=ylim,ylab="Density",type='n',bty='n',
+       xaxt="n",yaxt="n",xlab=" ",mgp=c(1,1,0)*1.7)
+  axis(1, pos=0)
+  axis(2, pos=x[1])
+  filled.dnorm(x,mu,tau,FALSE,col=col.alpha(4,alpha),lwd=2)
+  filled.dnorm(x,Y,sigma,FALSE,col=col.alpha(3,alpha),lwd=2)
+  filled.dnorm(x,mu.new,sigma.new,FALSE,col=col.alpha(2,alpha),lwd=2)
+  abline(v=Y,lty=2,lwd=3)
+  legend("topright",c("Prior","Data","Posterior"),lwd=4,col=4:2)
+}
+
+```
+
+```{r}
+
+par(mfrow=c(1,1))
+plot.KFupdate(mu,tau,Y,sigma)
+
+```
+
+```{r}
+
+par(mfrow=c(2,1))
+par(mar=c(2,3,2,2))
+plot.KFupdate(mu,tau/2.5,Y,sigma)
+plot.KFupdate(mu,tau,Y,sigma/2.5)
+
+```
+
+## Analysis step: comparison of Normal updates
+
+```{r}
+
+
+## KF one-step
+mu = 5    # prior mean
+tau = 0.4   # prior sd
+Y = 4   # observation
+sigma = 0.4 # observation sd
+m = 1.2     # process slope
+v = 0.25     # process error
+offset=ceiling(1.3*max(dnorm(x,mu,tau)))
+mu.a = m*mu
+tau.a = m*m*tau + v
+prec.new = (1/tau.a^2+1/sigma^2)
+mu.f = (mu.a/tau.a^2+Y/sigma^2)/prec.new
+tau.f = sqrt(1/prec.new)
+offset2 = offset + ceiling(1.2*max(dnorm(x,mu.f,tau.f)))
+xlim=c(0,offset2)
+ylim=c(min(qnorm(0.01,c(mu,Y,mu.a,mu.f),c(tau,sigma,tau.a,tau.f))),
+       max(qnorm(0.99,c(mu,Y,mu.a,mu.f),c(tau,sigma,tau.a,tau.f))))
+
+par(mfrow=c(1,1))
+par(mar=c(4,3,2,2))
+x = seq(ylim[1],ylim[2],length=1000)
+plot(0,0,xlim=xlim,ylim=ylim,xlab="Time",ylab="X",type='n',bty='n',
+     xaxt="n",yaxt="n",mgp=c(1,1,0)*1.7)
+axis(1, pos=ylim[1])
+axis(2, pos=0)
+##prior
+filled.dnorm(x,mu,tau,vertical=TRUE,col=col.alpha(2,alpha))
+text(0.4,mu-0.2,"1: Initial State",cex=1.5)
+##Forecast
+text(1,7.5,"Forecast Step",cex=2.5)
+filled.dnorm(x,mu.a,tau.a,vertical=TRUE,col=col.alpha(4,alpha),offset=offset)
+lines(c(0,offset),c(mu,mu.a),lty=2)
+lines(c(0,offset),qnorm(0.025,c(mu,mu.a),c(tau,tau.a)),lty=2)
+lines(c(0,offset),qnorm(0.975,c(mu,mu.a),c(tau,tau.a)),lty=2)
+text(2.8,6,"2: Forecast",cex=1.5)
+##Observation
+filled.dnorm(x,Y,sigma,col=col.alpha(3,alpha),vertical=TRUE,offset=offset)
+lines(c(offset,offset2),c(Y,Y),lty=3,lwd=2)
+text(3.5,Y-0.2,"3: New Observation", cex = 1.5)
+##Analysis
+text(3,7.5,"Analysis Step",cex=2.5)
+filled.dnorm(x,mu.f,tau.f,col=col.alpha(2,alpha),vertical=TRUE,offset=offset)
+text(3.6,mu.f,"4: Updated State",cex=1.5)
+
+
+```
+
+
+## Logistic EKF
+```{r}
+par(mfrow=c(1,1),lwd=4)
+N0 = 3
+r = 0.3
+p1 = 1
+p2 = 1
+q1 = 0
+q2 = 1
+K = 10
+
+g = function(N){
+  N+r*N*(1-N/K)
+}
+dg = function(N){
+  1+r-2*r*N/K
+}
+
+#for(r in c(0.2,1)){
+
+nt = 20
+N = N0
+EN = N0
+for(t in 2:nt){
+  N[t]=g(N[t-1])
+  m = dg(N[t-1])
+  p1[t]  = m^2*p1[t-1]+q1
+  p2[t]  = m^2*p2[t-1]+q2
+}
+UC = N+1.96*sqrt(p2)
+LC = N-1.96*sqrt(p2)
+plot(N,ylim=c(min(LC),max(UC)),type='l',cex.lab=1.5,cex.axis=1.5)
+lines(UC,lty=2)
+lines(LC,lty=2)
+lines(N+1.96*sqrt(p1),lty=3)
+lines(N-1.96*sqrt(p1),lty=3)
+legend("bottomright",legend=c("mean",paste("q =",c(q2,q1))),lty=1:3,cex=2)
+#}
+
+plot(UC-LC)
+
+plot(sqrt(p1)/sqrt(p2))
+abline(h=0.5)
+
+```
+
