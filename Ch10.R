@@ -105,10 +105,10 @@ sens = c(1,0.4)
 sd = c(0.4,1)
 ymax = mu*max(sens)+2*max(sd)
 
-layout(matrix(c(7,7,6,
-                2,3,1,
-                4,5,1),3,3,byrow=TRUE),
-       widths=c(0.44,0.44,.12),height=c(.12,0.44,0.44))
+layout(matrix(c(9,7,7,6,
+                8,2,3,1,
+                8,4,5,1),3,4,byrow=TRUE),
+       widths=c(.1,0.4,0.4,.1),height=c(.12,0.44,0.44))
 #layout.show(7)
 
 #par(mfrow=c(2,2))
@@ -141,22 +141,25 @@ plot.new()
 text(0.5,0.75,"PARAMETER UNCERTAINTY",cex=3)
 text(0.25,0.25,"LOW",cex=2)
 text(0.8,0.25,"HIGH",cex=2)
+plot.new()
+text(0.75,0.5,"PREDICTIVE UNCERTAINTY",cex=3,srt=90)
 
 ###############  TAYLOR SERIES: Michaelis-Menten ########################
 require(mvtnorm)
 
 V = 100
-V.sd = 10
-V.scale = 125
-k.scale = 250
-k = 30
-k.sd = 10
-Vk.cov = 15
-x = 15
+V.sd = 5
+V.scale = 35
+k.scale = 200
+k = 5
+k.sd = 5
+Vk.cov = -15
+x = 2
 SIGMA = matrix(c(V.sd^2,Vk.cov,Vk.cov,k.sd^2),2,2)
 V.seq = seq(V-3*V.sd,V+3*V.sd,length=1000)
-k.seq = seq(k-3*k.sd,k+3*k.sd,length=1000)
-x.seq = 0:60
+#k.seq = seq(max(k-3*k.sd,-x*0.9),k+3*k.sd,length=1000)
+k.seq = seq(max(k-3*k.sd,0),k+3*k.sd,length=1000)
+x.seq = 0:20
 
 par(mfrow=c(3,1),mar=c(4,5,1,1))
 ## Vmax
@@ -174,7 +177,8 @@ lines(c(V,V,0),c(0,Y.V.mu,Y.V.mu),lty=2,col="grey")                         ## m
 Y.k = V*x/(k.seq+x)
 Y.k.mu = V*x/(k+x) + V*x/(k+x)^3*k.sd^2
 Y.k.sd = V*x/(k+x)^2*k.sd
-Y.rng = c(min(min(Y.k),Y.k.mu-2.5*Y.k.sd),max(max(Y.k),Y.k.mu+2.5*Y.k.sd))
+#Y.rng = c(min(min(Y.k),Y.k.mu-2.5*Y.k.sd),max(max(Y.k),Y.k.mu+2.5*Y.k.sd))
+Y.rng = c(min(min(Y.k),Y.k.mu-2.5*Y.k.sd),min(max(Y.k),Y.k.mu+2.5*Y.k.sd))
 Y.k.seq = seq(Y.rng[1],Y.rng[2],length=1000)
 plot(k.seq,Y.k,xlab="k",ylab="Y",cex=1.2,cex.axis=1.2,ylim=Y.rng,cex.lab=1.6
      ,type='l',lwd=3,bty='l')
